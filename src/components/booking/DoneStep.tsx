@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import Link from "next/link";
 import type { PublicBooking } from "@/lib/bookings";
 import { shop, type Lang } from "@/lib/config";
-import { downloadIcs } from "@/lib/ics";
+import { googleCalendarUrl, icsPath, isAppleDevice, outlookCalendarUrl } from "@/lib/calendar";
 import { longDate, price, type Dict } from "@/lib/i18n";
 
 const ease = [0.23, 1, 0.32, 1] as const;
@@ -22,6 +22,12 @@ export function DoneStep({
   t: Dict;
 }) {
   const service = booking.serviceInfo;
+  // This step only renders after a booking, in the browser, so window/navigator are available.
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  const apple = isAppleDevice();
+  const google = googleCalendarUrl(booking, lang, origin);
+  const outlook = outlookCalendarUrl(booking, lang, origin);
+  const ics = icsPath(booking.token, lang);
 
   return (
     <div className="flex flex-col items-center gap-7 text-center">
@@ -68,10 +74,30 @@ export function DoneStep({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease, delay: 0.8 }}
       >
-        <button type="button" onClick={() => downloadIcs(booking, lang)} className="btn btn--primary h-13 w-full py-4">
+        {/* Apple devices open the event in Apple Calendar; everyone else in Google Calendar. */}
+        <a
+          href={apple ? ics : google}
+          target={apple ? undefined : "_blank"}
+          rel="noopener noreferrer"
+          className="btn btn--primary h-13 w-full py-4"
+        >
           <CalendarIcon />
           {t.addCalendar}
-        </button>
+        </a>
+        <p className="flex flex-wrap items-center justify-center gap-x-2 text-xs text-faint">
+          <span>{t.otherCalendars}</span>
+          <a href={google} target="_blank" rel="noopener noreferrer" className="text-muted link-draw hover:text-ink">
+            Google
+          </a>
+          <span aria-hidden>·</span>
+          <a href={ics} className="text-muted link-draw hover:text-ink">
+            Apple
+          </a>
+          <span aria-hidden>·</span>
+          <a href={outlook} target="_blank" rel="noopener noreferrer" className="text-muted link-draw hover:text-ink">
+            Outlook
+          </a>
+        </p>
         <div className="flex items-center justify-between gap-4 px-1 pt-1 text-sm">
           <Link href={`/cancel#${booking.token}`} className="text-muted link-draw transition-colors hover:text-ink">
             {t.cancelLink}
