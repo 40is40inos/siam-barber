@@ -54,14 +54,25 @@ const MIGRATIONS = [
 /** Length assumed for bookings made before appointments.minutes existed. */
 export const LEGACY_MINUTES = 45;
 
-const globalForDb = globalThis as unknown as { __siamDb?: Promise<Client> };
+const globalForDb = globalThis as unknown as { __siamDb?: Promise<Client>; __siamSchemaReady?: boolean };
 
-async function connect(): Promise<Client> {
+/** True inside Cloudflare Workers (deployed via OpenNext), where there is no disk and no shared sockets. */
+const onWorkers = () => typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
+
+function databaseUrl(): string {
   const url = process.env.DATABASE_URL || "file:data/siam-barber.db";
-  if (url.startsWith("file:")) {
-    mkdirSync(path.dirname(path.resolve(url.slice("file:".length))), { recursive: true });
+  if (onWorkers() && url.startsWith("file:")) {
+    throw new Error(
+      "DATABASE_URL is not set: on Cloudflare Workers it must point to a Turso/libsql database (libsql://…), " +
+        "with DATABASE_AUTH_TOKEN as a secret.",
+    );
   }
-  const client = createClient({ url, authToken: process.env.DATABASE_AUTH_TOKEN || undefined });
+  return url;
+}
+
+/** Creates tables and applies migrations; runs once per server instance. */
+async function ensureSchema(client: Client) {
+  if (globalForDb.__siamSchemaReady) return;
   await client.executeMultiple(SCHEMA);
   for (const sql of MIGRATIONS) {
     try {
@@ -70,10 +81,22 @@ async function connect(): Promise<Client> {
       if (!String((err as Error)?.message).includes("duplicate column")) throw err;
     }
   }
+  globalForDb.__siamSchemaReady = true;
+}
+
+async function connect(): Promise<Client> {
+  const url = databaseUrl();
+  if (url.startsWith("file:")) {
+    mkdirSync(path.dirname(path.resolve(url.slice("file:".length))), { recursive: true });
+  }
+  const client = createClient({ url, authToken: process.env.DATABASE_AUTH_TOKEN || undefined });
+  await ensureSchema(client);
   return client;
 }
 
 export function db(): Promise<Client> {
+  // Workers must not reuse I/O objects across requests: a fresh HTTP client per call is cheap.
+  if (onWorkers()) return connect();
   globalForDb.__siamDb ??= connect().catch((err) => {
     globalForDb.__siamDb = undefined;
     throw err;

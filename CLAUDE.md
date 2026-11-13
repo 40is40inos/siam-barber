@@ -13,8 +13,9 @@ using any Next API you haven't verified in this repo.
 
 ```bash
 npm run dev            # dev server on :3000 (local SQLite at data/siam-barber.db, created on first request)
-npm run build          # production build — the strictest check (Cache Components prerender rules)
+npm run build          # Next production build (what local checks use)
 npm start              # serve the build on :3000
+npm run deploy         # OpenNext build + deploy to Cloudflare Workers (Linux/WSL only: fails on plain Windows)
 npx tsc --noEmit       # type-check
 npx eslint src         # lint (npm run lint also works)
 npx next typegen       # regenerate route types (RouteContext<...>) if tsc can't find them
@@ -32,14 +33,14 @@ Never read or use the real `ADMIN_PASSWORD` from `.env.local`; the owner may hav
 
 ## Next.js 16 specifics that shape this code
 
-- **`cacheComponents: true`** (next.config.ts). Pages (`/`, `/admin`, `/cancel`) are static shells rendering a single
-  client component; all runtime data comes from client `fetch` to `/api/*`. Server components must not read the
-  clock or cookies. GET route handlers that depend on the time call `await connection()` first (see
-  `api/availability`).
-- **Activity route preservation.** Navigating away *hides* a page instead of unmounting it: state survives and
-  effects re-run on return. Stale UI must be cleared explicitly. See `BookingApp.tsx`: the device-bookings effect
-  always replaces the list (no early return), and a `useLayoutEffect` cleanup resets the flow if the user left from
-  the confirmation step.
+- **Cache Components is OFF** (next.config.ts) because OpenNext on Cloudflare Workers hangs or returns 500s with it
+  on Next 16. Do not turn it back on without re-checking OpenNext's status. The code was written while it was on and
+  stays compatible: pages (`/`, `/admin`, `/cancel`) are static shells rendering a single client component, all
+  runtime data comes from client `fetch` to `/api/*`, and GET handlers that depend on the time call
+  `await connection()` first (see `api/availability`).
+- **Activity route preservation** only applies when Cache Components is on: pages are then hidden instead of
+  unmounted. `BookingApp.tsx` already handles it (the device-bookings effect always replaces the list, and a
+  `useLayoutEffect` cleanup resets the flow if the user left from the confirmation step), so keep those patterns.
 - **Lint rule `react-hooks/set-state-in-effect`** rejects synchronous `setState` in effect bodies. Pattern used
   everywhere: `fetchX().then(applyX).catch(...)`, with state set only inside the callbacks.
 - `params` are Promises; route handlers type context with `RouteContext<"/api/...">`.
@@ -119,10 +120,17 @@ db.ts              libsql client, schema, MIGRATIONS
   (default `file:data/siam-barber.db`) and `DATABASE_AUTH_TOKEN` (for a remote libsql/Turso database).
 - The code is in a private repo on GitHub, `40is40inos/siam-barber`. Commits use the repo-local git identity, which
   is set to the owner's GitHub no-reply email.
-- **Not deployed yet.** The direction discussed is Cloudflare Workers via OpenNext plus Turso. It would require
-  turning `cacheComponents` off (OpenNext has open issues with Cache Components on Next 16), re-testing the
-  Activity-dependent behaviour above, and switching the libsql import to the web client for the Workers runtime.
-  Vercel's free plan is non-commercial, so it was ruled out.
+- **Deployed on Cloudflare Workers** via OpenNext (`wrangler.jsonc`, `open-next.config.ts`), built by Workers Builds
+  from GitHub `main`. The Worker is named `siam-barber`, and that name must match `name` and the
+  `WORKER_SELF_REFERENCE` service in `wrangler.jsonc`.
+  - Dashboard build command: `npx opennextjs-cloudflare build`; deploy command: `npx opennextjs-cloudflare deploy`.
+  - The database is Turso. `DATABASE_URL`, `DATABASE_AUTH_TOKEN`, `ADMIN_PASSWORD` and `SESSION_SECRET` are
+    secrets set in the Cloudflare dashboard (`keep_vars: true` preserves them across deploys).
+  - `@libsql/client` resolves to its web build under the `workerd` condition. `db.ts` refuses `file:` URLs on
+    Workers and creates a fresh client per request there (Workers forbid sharing I/O objects across requests).
+  - Vercel's free plan is non-commercial, so it was ruled out.
+- A Cloudflare quick tunnel (`cloudflared tunnel --url http://localhost:3001`) was used for a temporary preview from
+  this PC. It is not the deployment.
 - Still unconfirmed with the shop: real opening hours (the defaults were inferred from ebarber), plus `shop.area`
   and `shop.mapsUrl` in `config.ts` (both empty).
 
@@ -132,6 +140,9 @@ db.ts              libsql client, schema, MIGRATIONS
   corrupted this way). Make regex and escaped-string edits with the Edit tool, not shell scripts.
 - Git is set to `core.autocrlf=true`, so files may have CRLF line endings. Normalise before doing exact string
   replacement in scripts.
+- `npx opennextjs-cloudflare build` fails here with `EPERM … symlink` (no Developer Mode, no WSL distro). Verify
+  Cloudflare builds through the Workers Builds log instead.
+- PowerShell blocks `npm.ps1` (execution policy); use `npm.cmd` in the user's terminal.
 - Stopping a background `next start` task can leave its child `node` process running on the port. Kill it by
   matching `next start -p <port>` in the process command line.
 - When the browser pane is in the background, `requestAnimationFrame` pauses, so `AnimatePresence mode="wait"` step
