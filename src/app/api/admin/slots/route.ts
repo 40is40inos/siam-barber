@@ -4,7 +4,7 @@ import { fail, json, readJson, requireAdmin } from "@/lib/http";
 
 /** Block a free slot, or book it for a customer who phoned or walked in. */
 export async function POST(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   const body = await readJson(request);
   if (!body || !isValidAdminSlot(body.date, body.time)) return fail("invalid_slot");

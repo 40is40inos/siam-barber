@@ -14,6 +14,7 @@ import {
 } from "@/lib/settings";
 import { addDays, fromMinutes, toMinutes } from "@/lib/time";
 import { HolidayRangePicker } from "./HolidayRangePicker";
+import { PasswordField } from "./PasswordField";
 
 const ease = [0.23, 1, 0.32, 1] as const;
 const WEEK = [1, 2, 3, 4, 5, 6, 0]; // Monday first
@@ -208,6 +209,9 @@ export function AdminSettings({
 
       {/* Holidays (saved straight away, separate from the form above) */}
       <Holidays today={today} onToast={onToast} onUnauthorized={onUnauthorized} />
+
+      {/* Admin password (saved straight away, separate from the form above) */}
+      <ChangePassword onToast={onToast} onUnauthorized={onUnauthorized} />
 
       {/* Save bar */}
       <AnimatePresence>
@@ -603,6 +607,84 @@ function Holidays({
           ))}
         </AnimatePresence>
       </ul>
+    </Section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+/** Change the admin password. Other devices are signed out; this one stays signed in. */
+function ChangePassword({ onToast, onUnauthorized }: { onToast: (msg: string) => void; onUnauthorized: () => void }) {
+  const { lang } = useLang();
+  const a = adminDict[lang];
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (busy) return;
+    setError(null);
+    if (next.trim().length < 8) return setError("weak_password");
+    if (next !== confirm) return setError("mismatch");
+    setBusy(true);
+    const res = await fetch("/api/admin/password", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ current, password: next }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (res.status === 401 && data.error === "unauthorized") return onUnauthorized();
+    if (!res.ok) return setError(typeof data.error === "string" && data.error in a.loginErrors ? data.error : "generic");
+    setCurrent("");
+    setNext("");
+    setConfirm("");
+    onToast("passwordChanged");
+  }
+
+  return (
+    <Section title={a.passwordTitle} hint={a.passwordHint}>
+      <form onSubmit={submit} className="flex max-w-md flex-col gap-4">
+        <PasswordField
+          id="pw-current"
+          label={a.currentPassword}
+          value={current}
+          onChange={setCurrent}
+          invalid={error === "wrong_password"}
+          autoComplete="current-password"
+        />
+        <PasswordField
+          id="pw-new"
+          label={a.newPassword}
+          value={next}
+          onChange={setNext}
+          invalid={error === "weak_password"}
+          autoComplete="new-password"
+        />
+        <PasswordField
+          id="pw-confirm"
+          label={a.confirmPassword}
+          value={confirm}
+          onChange={setConfirm}
+          invalid={error === "mismatch"}
+          autoComplete="new-password"
+        />
+        {error && (
+          <p className="text-sm text-accent" role="alert">
+            {a.loginErrors[error]}
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={busy || !current || !next || !confirm}
+          className="btn btn--primary mt-2 h-11 self-start px-5 text-sm disabled:opacity-50"
+        >
+          {busy ? <span className="spinner" aria-hidden /> : a.changePassword}
+        </button>
+      </form>
     </Section>
   );
 }

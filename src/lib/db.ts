@@ -37,6 +37,11 @@ CREATE TABLE IF NOT EXISTS settings (
   value      TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS login_attempts (
+  ip    TEXT PRIMARY KEY,
+  count INTEGER NOT NULL,
+  until INTEGER NOT NULL
+);
 `;
 
 /**

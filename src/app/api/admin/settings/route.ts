@@ -5,13 +5,13 @@ import { getSettings, saveSettings } from "@/lib/settings-store";
 
 /** The barber's services, prices, hours and booking rules. */
 export async function GET(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   return json({ ok: true, settings: await getSettings() });
 }
 
 export async function PUT(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   const body = await readJson(request);
   const result = validateSettings(body?.settings);

@@ -12,6 +12,7 @@ import { fmtDate, longDate, price } from "@/lib/i18n";
 import { activeServices, findService, type Settings } from "@/lib/settings";
 import { formatPhone } from "@/lib/validate";
 import { AdminSettings } from "./AdminSettings";
+import { PasswordField } from "./PasswordField";
 
 /* The barber's screen is used many times a day: motion here is quick and quiet. */
 
@@ -36,11 +37,11 @@ async function call(path: string, init?: RequestInit) {
 }
 
 export function AdminApp() {
-  const [session, setSession] = useState<"checking" | "out" | "in" | "unconfigured">("checking");
+  const [session, setSession] = useState<"checking" | "out" | "in" | "setup">("checking");
 
   useEffect(() => {
     call("/api/admin/session").then(({ data }) =>
-      setSession(data.signedIn ? "in" : data.configured === false ? "unconfigured" : "out"),
+      setSession(data.signedIn ? "in" : data.needsSetup ? "setup" : "out"),
     );
   }, []);
 
@@ -50,7 +51,7 @@ export function AdminApp() {
         {session === "checking" ? null : session === "in" ? (
           <Dashboard onSignedOut={() => setSession("out")} />
         ) : (
-          <Login unconfigured={session === "unconfigured"} onSignedIn={() => setSession("in")} />
+          <Login setup={session === "setup"} onSignedIn={() => setSession("in")} onNeedsSetup={() => setSession("setup")} />
         )}
       </div>
     </MotionConfig>
@@ -59,21 +60,41 @@ export function AdminApp() {
 
 /* ------------------------------------------------------------------ */
 
-function Login({ onSignedIn, unconfigured }: { onSignedIn: () => void; unconfigured: boolean }) {
+/**
+ * Sign-in screen. While no password exists yet (fresh deploy), it becomes "create your password":
+ * the first person to submit it owns the admin, so this is done right after deploying.
+ */
+function Login({
+  setup,
+  onSignedIn,
+  onNeedsSetup,
+}: {
+  setup: boolean;
+  onSignedIn: () => void;
+  onNeedsSetup: () => void;
+}) {
   const { a } = useAdminText();
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null); // error code, translated at render
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
-    setBusy(true);
     setError(null);
-    const { ok, data } = await call("/api/admin/session", { method: "POST", body: JSON.stringify({ password }) });
+    if (setup) {
+      if (password.trim().length < 8) return setError("weak_password");
+      if (password !== confirm) return setError("mismatch");
+    }
+    setBusy(true);
+    const { ok, data } = setup
+      ? await call("/api/admin/password", { method: "POST", body: JSON.stringify({ password }) })
+      : await call("/api/admin/session", { method: "POST", body: JSON.stringify({ password }) });
     setBusy(false);
     if (ok) return onSignedIn();
-    setError(data.error === "locked" || data.error === "not_configured" ? data.error : "wrong_password");
+    if (data.error === "needs_setup") return onNeedsSetup();
+    setError(typeof data.error === "string" && data.error in a.loginErrors ? data.error : "generic");
   }
 
   return (
@@ -89,35 +110,41 @@ function Login({ onSignedIn, unconfigured }: { onSignedIn: () => void; unconfigu
         transition={{ duration: 0.35, ease }}
       >
         <BrandMark />
-        <h1 className="mt-8 font-display text-2xl font-bold tracking-tight">{a.title}</h1>
-        <p className="mt-1 text-sm text-muted">{a.subtitle}</p>
-        {unconfigured ? (
-          <p className="mt-6 rounded-2xl bg-accent/10 p-4 text-sm">{a.notConfiguredHelp}</p>
-        ) : (
-          <>
-            <div className="field mt-6" data-invalid={Boolean(error)}>
-              <input
-                id="admin-password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder=" "
-                autoComplete="current-password"
-                autoFocus
-              />
-              <label htmlFor="admin-password">{a.password}</label>
-              <span className="field__bar" aria-hidden />
-            </div>
-            {error && (
-              <p className="mt-3 text-sm text-accent" role="alert">
-                {a.loginErrors[error]}
-              </p>
-            )}
-            <button type="submit" disabled={busy || !password} className="btn btn--primary mt-7 h-12 w-full disabled:opacity-50">
-              {busy ? <span className="spinner" aria-hidden /> : a.signIn}
-            </button>
-          </>
+        <h1 className="mt-8 font-display text-2xl font-bold tracking-tight">{setup ? a.setupTitle : a.title}</h1>
+        <p className="mt-1 text-sm text-muted">{setup ? a.setupSubtitle : a.subtitle}</p>
+        <div className="mt-6 flex flex-col gap-4">
+          <PasswordField
+            id="admin-password"
+            label={setup ? a.newPassword : a.password}
+            value={password}
+            onChange={setPassword}
+            invalid={Boolean(error)}
+            autoComplete={setup ? "new-password" : "current-password"}
+            autoFocus
+          />
+          {setup && (
+            <PasswordField
+              id="admin-password-confirm"
+              label={a.confirmPassword}
+              value={confirm}
+              onChange={setConfirm}
+              invalid={error === "mismatch"}
+              autoComplete="new-password"
+            />
+          )}
+        </div>
+        {error && (
+          <p className="mt-3 text-sm text-accent" role="alert">
+            {a.loginErrors[error]}
+          </p>
         )}
+        <button
+          type="submit"
+          disabled={busy || !password || (setup && !confirm)}
+          className="btn btn--primary mt-7 h-12 w-full disabled:opacity-50"
+        >
+          {busy ? <span className="spinner" aria-hidden /> : setup ? a.setupButton : a.signIn}
+        </button>
       </motion.form>
     </div>
   );

@@ -5,7 +5,7 @@ import { isDateString } from "@/lib/time";
 
 /** Close or reopen a whole day (holidays, sick days). Existing bookings stay. */
 export async function PUT(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   const body = await readJson(request);
   if (!body || !isDateString(body.date) || typeof body.closed !== "boolean") return fail("invalid_request");

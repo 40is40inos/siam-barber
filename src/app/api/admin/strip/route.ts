@@ -9,7 +9,7 @@ import { addDays, isDateString, scheduleSlots, shopNow, weekday } from "@/lib/ti
  * padded to whole Monday–Sunday weeks.
  */
 export async function GET(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   const today = shopNow().date;
   const month = request.nextUrl.searchParams.get("month") ?? today.slice(0, 7);

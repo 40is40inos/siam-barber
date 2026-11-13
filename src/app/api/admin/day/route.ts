@@ -4,7 +4,7 @@ import { fail, json, requireAdmin } from "@/lib/http";
 import { isDateString } from "@/lib/time";
 
 export async function GET(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   const date = request.nextUrl.searchParams.get("date");
   if (!isDateString(date)) return fail("invalid_date");

@@ -4,7 +4,7 @@ import { fail, json, requireAdmin } from "@/lib/http";
 
 /** Cancel a booking or lift a block. */
 export async function DELETE(request: NextRequest, ctx: RouteContext<"/api/admin/appointments/[id]">) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   const { id } = await ctx.params;
   const result = await adminRelease(id);

@@ -18,6 +18,6 @@ export async function readJson(request: NextRequest): Promise<Record<string, unk
 }
 
 /** Returns a 401 response when the request has no valid barber session. */
-export function requireAdmin(request: NextRequest) {
-  return isAdmin(request) ? null : fail("unauthorized", 401);
+export async function requireAdmin(request: NextRequest) {
+  return (await isAdmin(request)) ? null : fail("unauthorized", 401);
 }

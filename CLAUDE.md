@@ -23,13 +23,15 @@ npx next typegen       # regenerate route types (RouteContext<...>) if tsc can't
 
 There is **no test suite**. Verify changes with `tsc` + `eslint` + `next build`, `curl` against the API, and the
 browser. For end-to-end checks without touching the real database or the barber's password, run a throwaway
-production server on another port, then delete its DB afterwards:
+production server on another port against an empty DB, create a throwaway admin password on its `/admin` setup
+screen, and delete the DB afterwards:
 
 ```bash
-ADMIN_PASSWORD=throwaway SESSION_SECRET=tmp DATABASE_URL="file:<scratch-dir>/verify.db" node node_modules/next/dist/bin/next start -p 3100
+DATABASE_URL="file:<scratch-dir>/verify.db" node node_modules/next/dist/bin/next start -p 3100
 ```
 
-Never read or use the real `ADMIN_PASSWORD` from `.env.local`; the owner may have set a personal one.
+Never read or use the owner's real admin password (stored hashed in the DB; an old `ADMIN_PASSWORD` may still sit
+in `.env.local`).
 
 ## Next.js 16 specifics that shape this code
 
@@ -84,9 +86,17 @@ db.ts              libsql client, schema, MIGRATIONS
   reaches server logs. The browser keeps its booking tokens in localStorage (`siam:bookings`) to show a "your
   appointment" banner. Abuse limits: per-phone cap (`maxActivePerPhone`, phones normalised to E.164 in
   `validate.ts`) and a hidden `website` honeypot field.
-- **Admin auth:** a single `ADMIN_PASSWORD`. Sign-in sets an HttpOnly cookie holding an HMAC-signed expiry
-  (`lib/auth.ts`). Every `/api/admin/*` handler starts with `requireAdmin(request)`; there is no proxy/middleware.
-  Login brute-force protection is an in-memory counter, so it only applies per server instance.
+- **Admin auth** (`lib/auth.ts`) needs no env vars:
+  - The barber creates his password on the first `/admin` visit (`POST /api/admin/password`, allowed only while
+    none exists) and changes it in Settings (`PUT`, requires the current one).
+  - The password is stored as a salted PBKDF2-SHA256 hash (Web Crypto, 20k iterations, kept low for Workers'
+    ~10 ms CPU budget; the count is stored per hash) in the `settings` row `auth_password`.
+  - The session cookie is an HMAC-signed expiry. The key is a random `auth_signing_key` (generated once, in
+    `settings`) combined with the current password hash, so a password change signs out every other device.
+  - `ADMIN_PASSWORD` in env is only a fallback until a password is created.
+  - Lockout: 5 failures per IP lock it for 10 minutes, stored in the `login_attempts` table so it holds across
+    Workers isolates.
+  - Every `/api/admin/*` handler starts with `await requireAdmin(request)`; there is no proxy/middleware.
 
 **Client:**
 
@@ -116,16 +126,17 @@ db.ts              libsql client, schema, MIGRATIONS
 
 ## Environment and deployment
 
-- `.env.local` (ignored; template in `.env.example`) holds `ADMIN_PASSWORD`, `SESSION_SECRET`, `DATABASE_URL`
-  (default `file:data/siam-barber.db`) and `DATABASE_AUTH_TOKEN` (for a remote libsql/Turso database).
+- No env vars are required locally. Optional ones (see `.env.example`): `DATABASE_URL` (default
+  `file:data/siam-barber.db`), `DATABASE_AUTH_TOKEN` (for Turso), and the fallback `ADMIN_PASSWORD`.
 - The code is in a private repo on GitHub, `40is40inos/siam-barber`. Commits use the repo-local git identity, which
   is set to the owner's GitHub no-reply email.
 - **Deployed on Cloudflare Workers** via OpenNext (`wrangler.jsonc`, `open-next.config.ts`), built by Workers Builds
   from GitHub `main`. The Worker is named `siam-barber`, and that name must match `name` and the
   `WORKER_SELF_REFERENCE` service in `wrangler.jsonc`.
   - Dashboard build command: `npx opennextjs-cloudflare build`; deploy command: `npx opennextjs-cloudflare deploy`.
-  - The database is Turso. `DATABASE_URL`, `DATABASE_AUTH_TOKEN`, `ADMIN_PASSWORD` and `SESSION_SECRET` are
-    secrets set in the Cloudflare dashboard (`keep_vars: true` preserves them across deploys).
+  - The database is Turso. `DATABASE_URL` and `DATABASE_AUTH_TOKEN` are secrets set in the Cloudflare dashboard
+    (`keep_vars: true` preserves them across deploys). After a deploy to a fresh database, create the admin password
+    at `/admin` immediately (first visitor wins).
   - `@libsql/client` resolves to its web build under the `workerd` condition. `db.ts` refuses `file:` URLs on
     Workers and creates a fresh client per request there (Workers forbid sharing I/O objects across requests).
   - Vercel's free plan is non-commercial, so it was ruled out.

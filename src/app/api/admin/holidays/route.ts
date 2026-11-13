@@ -5,14 +5,14 @@ import { addDays, isDateString, shopNow } from "@/lib/time";
 
 /** Upcoming closed days (holidays, time off), today included. */
 export async function GET(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   return json({ ok: true, holidays: await listHolidays(shopNow().date) });
 }
 
 /** Close a range of days: { from, to, note? }. */
 export async function POST(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   const body = await readJson(request);
   const from = body?.from;
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
 /** Reopen days: { dates: [...] }. */
 export async function DELETE(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   const body = await readJson(request);
   const dates = Array.isArray(body?.dates) ? body.dates.filter(isDateString).slice(0, 400) : [];

@@ -11,12 +11,22 @@ Customers pick a day, a time, type their name and phone, and they're booked. No 
 
 ```bash
 npm install
-cp .env.example .env.local   # then set ADMIN_PASSWORD and SESSION_SECRET
 npm run dev
 ```
 
 Open http://localhost:3000 and http://localhost:3000/admin.
-The local database is created automatically in `data/siam-barber.db`.
+The local database is created automatically in `data/siam-barber.db`. No settings file is needed
+(`.env.example` lists the optional ones).
+
+## Admin password
+
+There is no password in any config file. The first visit to `/admin` on a fresh database shows
+**Create a password**; the barber picks his own and is signed in. Later he changes it in
+**Ρυθμίσεις / Settings → Admin password** (that signs out his other devices).
+
+Until a password is created, whoever opens `/admin` first can set it, so do it right after deploying.
+It's stored as a salted hash; the cookie-signing key is generated automatically and also lives in the
+database. Five wrong attempts lock that IP out for 10 minutes.
 
 ## Change prices, hours, booking rules
 
@@ -51,22 +61,25 @@ details that don't change often: shop name, barber name, area and Maps link (sti
 
 ## Deploy
 
-The app is a standard Next.js server. It needs somewhere to keep the database:
-
-**Vercel + Turso (free tiers)**
-1. Create a Turso database and token (`turso db create siam-barber`, `turso db tokens create siam-barber`).
-2. On Vercel, import the repo and set `DATABASE_URL` (`libsql://…`), `DATABASE_AUTH_TOKEN`, `ADMIN_PASSWORD`, `SESSION_SECRET`.
+**Cloudflare Workers + Turso (free tiers): the current setup.**
+1. Connect the GitHub repo to a Worker named `siam-barber` (Workers Builds).
+   Build command: `npx opennextjs-cloudflare build`. Deploy command: `npx opennextjs-cloudflare deploy`.
+2. Create a free Turso database and a token at [turso.tech](https://turso.tech).
+3. In the Worker's **Settings → Variables and Secrets**, add `DATABASE_URL` (`libsql://…`) and
+   `DATABASE_AUTH_TOKEN`, both as type **Secret**.
+4. Deploy, then open `/admin` straight away and create the admin password.
 
 **A VPS or any Node host with a disk**
 ```bash
 npm ci && npm run build
-DATABASE_URL=file:/var/lib/siam-barber/siam.db ADMIN_PASSWORD=… SESSION_SECRET=… npm start
+DATABASE_URL=file:/var/lib/siam-barber/siam.db npm start
 ```
 
 The tables are created on first request.
 
 ## Stack
 
-Next.js 16 (App Router, Cache Components), React 19, Tailwind CSS 4, Motion, libSQL/SQLite.
+Next.js 16 (App Router), React 19, Tailwind CSS 4, Motion, shadcn/ui calendar, libSQL/SQLite (Turso),
+deployed on Cloudflare Workers via OpenNext.
 Fonts: Syne (display) and Manrope (text), both with Greek.
 Motion respects the system's reduced-motion setting.
