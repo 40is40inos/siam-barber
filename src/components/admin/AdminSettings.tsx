@@ -13,6 +13,7 @@ import {
   type Settings,
 } from "@/lib/settings";
 import { addDays, fromMinutes, toMinutes } from "@/lib/time";
+import { HolidayRangePicker } from "./HolidayRangePicker";
 
 const ease = [0.23, 1, 0.32, 1] as const;
 const WEEK = [1, 2, 3, 4, 5, 6, 0]; // Monday first
@@ -546,23 +547,23 @@ function Holidays({
 
   return (
     <Section title={a.holidaysTitle} hint={a.holidaysHint}>
-      <form onSubmit={add} className="grid gap-3 sm:grid-cols-[1fr_1fr_1.4fr_auto] sm:items-end">
-        <Field label={a.from}>
-          <input
-            type="date"
-            required
-            min={today ?? undefined}
-            value={from}
-            onChange={(e) => {
-              setFrom(e.target.value);
-              if (!to || to < e.target.value) setTo(e.target.value);
+      <form onSubmit={add} className="grid gap-3 sm:grid-cols-[1.3fr_1.3fr_auto] sm:items-end">
+        {/* Not a <label>: the calendar opens in a popover outside this element. */}
+        <div className="flex flex-col gap-2">
+          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">{a.days}</span>
+          <HolidayRangePicker
+            from={from}
+            to={to}
+            onChange={(f, t) => {
+              setFrom(f);
+              setTo(t);
             }}
-            className={inputCls}
+            today={today}
+            closedDates={list?.map((h) => h.date) ?? []}
+            lang={lang}
+            labels={a}
           />
-        </Field>
-        <Field label={a.to}>
-          <input type="date" min={from || today || undefined} value={to} onChange={(e) => setTo(e.target.value)} className={inputCls} />
-        </Field>
+        </div>
         <Field label={a.note}>
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={a.notePlaceholder} maxLength={80} className={inputCls} />
         </Field>
