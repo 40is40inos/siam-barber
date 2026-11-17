@@ -4,7 +4,7 @@
 
 A booking site built for **Siam Barber**, a one-chair barber shop in Greece, to replace its ebarber.gr booking page. Customers pick a day and a time, type their name and phone, and they're booked: no accounts, no codes. The barber runs his schedule, prices and opening hours from his phone.
 
-**Live: https://siam-barber.40is40inos.workers.dev**. This is the shop's real booking page, so please look around but don't book test appointments.
+**Live: https://siam-barber.40is40inos.workers.dev**. The shop hasn't started using it yet, so feel free to book a test appointment, then cancel it with the link on the confirmation screen.
 
 ![Booking page](docs/screenshots/booking-home.webp)
 
@@ -37,7 +37,7 @@ The screenshots come from a local copy with made-up bookings.
 
 ## Engineering notes
 
-- **No double bookings.** The overlap check and the insert run in one database write transaction. A partial unique index on `(date, time) WHERE status = 'active'` backs it up. Overlaps use each booking's stored length, so changing the appointment length later never double-books.
+- **No double bookings.** The overlap check and the insert run in one database write transaction. A partial unique index on `(date, time) WHERE status = 'active'` backs it up. Overlaps use each booking's stored length, so changing the appointment length later never double-books. On the live deployment, five simultaneous requests for the same slot gave exactly one booking; the other four were told the slot was taken.
 - **Abuse limits without accounts.**
   - The server re-checks every booking: on the schedule, inside the booking window, not in the past, day not closed.
   - Phone numbers are normalised to one format (`691 234 5678`, `+30…` and `0030…` are the same number) and capped at a set number of upcoming bookings (2 by default).
